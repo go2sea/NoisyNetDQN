@@ -53,12 +53,10 @@ class NoisyNetDQN:
 
         self.saver = tf.train.Saver()
 
-
         self.sess.run(tf.global_variables_initializer())
 
-
-        # self.save_model()
-        # self.restore_model()
+        self.save_model()
+        self.restore_model()
 
     def noise_length(self, units):
         result = 0
