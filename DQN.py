@@ -128,13 +128,14 @@ class DQN:
 
         # 提供给placeholder，因此需要先计算出
         Q_eval = self.Q_eval.eval(feed_dict={self.eval_input: next_state_batch})
+        Q_select = self.Q_select.eval(feed_dict={self.select_input: state_batch})
 
         # convert true to 1, false to 0
         done = np.array(done) + 0
 
         y_batch = np.zeros((self.config.BATCH_SIZE, self.action_dim))
         for i in range(0, self.config.BATCH_SIZE):
-            temp = self.Q_select.eval(feed_dict={self.select_input: state_batch[i].reshape((-1, self.state_dim))})[0]
+            temp = Q_select[i]
             action = np.argmax(Q_eval[i])
             temp[action_batch[i]] = reward_batch[i] + (1 - done[i]) * self.config.GAMMA * Q_eval[i][action]
             y_batch[i] = temp

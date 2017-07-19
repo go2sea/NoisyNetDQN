@@ -5,6 +5,8 @@ import random
 from collections import deque
 import functools
 
+from myUtils import conv, noisy_dense
+
 
 def lazy_property(func):
     attribute = '_lazy_' + func.__name__
@@ -26,26 +28,21 @@ class NoisyNetDQN:
         self.replay_buffer = deque(maxlen=self.config.replay_buffer_size)
         self.time_step = 0
         # self.epsilon = self.config.INITIAL_EPSILON
-        self.state_dim = env.observation_space.shape[0]
+        # self.state_dim = env.observation_space.shape[0]  # 仅仅适用于状态只有一维的情况，如CartPole
+        self.state_dim = env.observation_space.shape
         self.action_dim = env.action_space.n
-        # print 'state_dim:', self.state_dim
-        # print 'action_dim:', self.action_dim
+        print 'state_dim:', self.state_dim
+        print 'action_dim:', self.action_dim
 
         self.action_batch = tf.placeholder("int32", [None])
         self.y_input = tf.placeholder("float", [None, self.action_dim])
-
-        self.eval_input = tf.placeholder("float", [None, self.state_dim])
-        self.select_input = tf.placeholder("float", [None, self.state_dim])
-
-        self.units = [24, 24]  # 每层去全连接的神经元数量（除最后一层）
-        self.select_noise_input = tf.placeholder("float", [None, self.noise_length(self.units)])
-        self.eval_noise_input = tf.placeholder("float", [None, self.noise_length(self.units)])
+        batch_shape = [None]
+        batch_shape.extend(self.state_dim)
+        self.eval_input = tf.placeholder("float", batch_shape)
+        self.select_input = tf.placeholder("float", batch_shape)
 
         self.Q_select
         self.Q_eval
-
-        self.select_noise_batch
-        self.eval_noise_batch
 
         self.loss
         self.optimize
@@ -60,46 +57,30 @@ class NoisyNetDQN:
 
     def noise_length(self, units):
         result = 0
-        temp = [self.state_dim]
+        temp = [24]
         temp.extend(units)
         temp.append(self.action_dim)
         for i in range(len(temp) - 1):
             result += temp[i] * temp[i+1] + temp[i+1]
         return result
 
-    def build_layers(self, state, noise, c_names, units_1, units_2, w_i, b_i, reg=None):
-        # 注意：同state一样，noise的shape应看作[1, self.noise_length(self.units)]
-        index = 0
-        with tf.variable_scope('l1'):
-            w1 = tf.get_variable('w1', [self.state_dim, units_1], initializer=w_i, collections=c_names, regularizer=reg)
-            b1 = tf.get_variable('b1', [1, units_1], initializer=b_i, collections=c_names, regularizer=reg)
-            w_noise_1 = tf.get_variable('w_noise_1', [self.state_dim, units_1], initializer=w_i, collections=c_names, regularizer=reg)
-            b_noise_1 = tf.get_variable('b_noise_1', [1, units_1], initializer=b_i, collections=c_names, regularizer=reg)
-            w1 += tf.multiply(tf.reshape(noise[0][index:index+tf.reduce_prod(tf.shape(w_noise_1))], tf.shape(w_noise_1)), w_noise_1)
-            index += tf.reduce_prod(tf.shape(w_noise_1))
-            b1 += tf.multiply(tf.reshape(noise[0][index:index+tf.reduce_prod(tf.shape(b_noise_1))], tf.shape(b_noise_1)), b_noise_1)
-            index += tf.reduce_prod(tf.shape(b_noise_1))
-            dense1 = tf.nn.relu(tf.matmul(state, w1) + b1)
-        with tf.variable_scope('l2'):
-            w2 = tf.get_variable('w2', [units_1, units_2], initializer=w_i, collections=c_names, regularizer=reg)
-            b2 = tf.get_variable('b2', [1, units_2], initializer=b_i, collections=c_names, regularizer=reg)
-            w_noise_2 = tf.get_variable('w_noise_2', [units_1, units_2], initializer=w_i, collections=c_names, regularizer=reg)
-            b_noise_2 = tf.get_variable('b_noise_2', [1, units_2], initializer=b_i, collections=c_names, regularizer=reg)
-            w2 += tf.multiply(tf.reshape(noise[0][index:index + tf.reduce_prod(tf.shape(w_noise_2))], w_noise_2.shape), w_noise_2)
-            index += tf.reduce_prod(tf.shape(w_noise_2))
-            b2 += tf.multiply(tf.reshape(noise[0][index:index + tf.reduce_prod(tf.shape(b_noise_2))], b_noise_2.shape), b_noise_2)
-            index += tf.reduce_prod(tf.shape(b_noise_2))
-            dense2 = tf.nn.relu(tf.matmul(dense1, w2) + b2)
-        with tf.variable_scope('l3'):
-            w3 = tf.get_variable('w3', [units_2, self.action_dim], initializer=w_i, collections=c_names, regularizer=reg)
-            b3 = tf.get_variable('b3', [1, self.action_dim], initializer=b_i, collections=c_names, regularizer=reg)
-            w_noise_3 = tf.get_variable('w_noise_3', [units_2, self.action_dim], initializer=w_i, collections=c_names, regularizer=reg)
-            b_noise_3 = tf.get_variable('b_noise_3', [1, self.action_dim], initializer=b_i, collections=c_names, regularizer=reg)
-            w3 += tf.multiply(tf.reshape(noise[0][index:index + tf.reduce_prod(tf.shape(w_noise_3))], w_noise_3.shape), w_noise_3)
-            index += tf.reduce_prod(tf.shape(w_noise_3))
-            b3 += tf.multiply(tf.reshape(noise[0][index:index + tf.reduce_prod(tf.shape(b_noise_3))], b_noise_3.shape), b_noise_3)
-            index += tf.reduce_prod(tf.shape(b_noise_3))
-            dense3 = tf.matmul(dense2, w3) + b3
+    def build_layers(self, state, c_names, units_1, units_2, w_i, b_i, reg=None):
+        with tf.variable_scope('conv1'):
+            conv1 = conv(state, [5, 5, 3, 6], [6], [1, 2, 2, 1], w_i, b_i)
+        with tf.variable_scope('conv2'):
+            conv2 = conv(conv1, [3, 3, 6, 12], [12], [1, 2, 2, 1], w_i, b_i)
+        with tf.variable_scope('flatten'):
+            flatten = tf.contrib.layers.flatten(conv2)
+            # 两种reshape写法
+            # flatten = tf.reshape(relu5, [-1, np.prod(relu5.get_shape().as_list()[1:])])
+            # flatten = tf.reshape(relu5, [-1, np.prod(relu5.shape.as_list()[1:])])
+            # print flatten.get_shape()
+        with tf.variable_scope('dense1'):
+            dense1 = noisy_dense(flatten, units_1, [units_1], c_names, w_i, b_i)
+        with tf.variable_scope('dense2'):
+            dense2 = noisy_dense(dense1, units_2, [units_2], c_names, w_i, b_i)
+        with tf.variable_scope('dense3'):
+            dense3 = noisy_dense(dense2, self.action_dim, [self.action_dim], c_names, w_i, b_i)
         return dense3
 
     @lazy_property
@@ -109,7 +90,7 @@ class NoisyNetDQN:
             w_i = tf.random_uniform_initializer(-0.1, 0.1)
             b_i = tf.constant_initializer(0.1)
             regularizer = tf.contrib.layers.l2_regularizer(scale=0.2)  # 注意：只有select网络有l2正则化
-            result = self.build_layers(self.select_input, self.select_noise_input, c_names, 24, 24, w_i, b_i, regularizer)
+            result = self.build_layers(self.select_input, c_names, 24, 24, w_i, b_i, regularizer)
             return result
 
     @lazy_property
@@ -118,7 +99,7 @@ class NoisyNetDQN:
             c_names = ['eval_net_params', tf.GraphKeys.GLOBAL_VARIABLES]
             w_i = tf.random_uniform_initializer(-0.1, 0.1)
             b_i = tf.constant_initializer(0.1)
-            result = self.build_layers(self.eval_input, self.eval_noise_input, c_names, 24, 24, w_i, b_i)
+            result = self.build_layers(self.eval_input, c_names, 24, 24, w_i, b_i)
             return result
 
     @lazy_property
@@ -136,16 +117,6 @@ class NoisyNetDQN:
         select_params = tf.get_collection('select_net_params')
         eval_params = tf.get_collection('eval_net_params')
         return [tf.assign(e, s) for e, s in zip(eval_params, select_params)]
-
-    @lazy_property
-    def select_noise_batch(self):
-        return tf.random_normal([self.config.BATCH_SIZE, self.noise_length(self.units)])
-        # return tf.random_uniform([self.config.BATCH_SIZE, self.noise_length(self.units)])
-
-    @lazy_property
-    def eval_noise_batch(self):
-        return tf.random_normal([self.config.BATCH_SIZE, self.noise_length(self.units)])
-        # return tf.random_uniform([self.config.BATCH_SIZE, self.noise_length(self.units)])
 
     def save_model(self):
         print("Model saved in : ", self.saver.save(self.sess, self.config.MODEL_PATH))
@@ -175,9 +146,8 @@ class NoisyNetDQN:
         done = [data[4] for data in minibatch]
 
         # 提供给placeholder，因此需要先计算出（注意区分DDQN：此处不需要计算next_state_batch的Q_select）
-        Q_eval = self.Q_eval.eval(feed_dict={self.eval_input: next_state_batch,
-                                             self.eval_noise_input: self.eval_noise_batch.eval()})
-        select_noise_batch = self.select_noise_batch.eval()
+        Q_eval = self.Q_eval.eval(feed_dict={self.eval_input: next_state_batch})
+        Q_select = self.Q_select.eval(feed_dict={self.select_input: state_batch})
 
         # convert true to 1, false to 0
         done = np.array(done) + 0
@@ -185,8 +155,7 @@ class NoisyNetDQN:
         y_batch = np.zeros((self.config.BATCH_SIZE, self.action_dim))
         for i in range(0, self.config.BATCH_SIZE):
             # 注意：noisei_input也只是batch中的一个
-            temp = self.Q_select.eval(feed_dict={self.select_input: state_batch[i].reshape([1, self.state_dim]),
-                                                 self.select_noise_input: select_noise_batch[i].reshape([1, self.noise_length(self.units)])})[0]
+            temp = Q_select[i]
             action = np.argmax(Q_eval[i])
             temp[action_batch[i]] = reward_batch[i] + (1 - done[i]) * self.config.GAMMA * Q_eval[i][action]
             y_batch[i] = temp
@@ -195,17 +164,11 @@ class NoisyNetDQN:
         self.sess.run(self.optimize, feed_dict={
             self.y_input: y_batch,
             self.select_input: state_batch,
-            self.action_batch: action_batch,
-            self.select_noise_input: select_noise_batch
+            self.action_batch: action_batch
         })
         # 此例中一局步数有限，因此可以外部控制一局结束后update ，update为false时在外部控制
         if update and self.time_step % self.config.UPDATE_TARGET_NET == 0:
-            print 'updating !!!'
             self.sess.run(self.update_target_net)
 
     def noisy_action(self, state):
-        # 此处只需要一个[1, self.noise_length(self.units)]的噪声，却产生了[64, self.noise_length(self.units)]，有性能损失
-        n = self.eval_noise_batch.eval()[33].reshape([1, self.noise_length(self.units)])
-        f = {self.eval_input: [state], self.eval_noise_input: n}
-        b = self.Q_eval.eval(feed_dict=f)[0]
-        return np.argmax(b)
+        return np.argmax(self.Q_eval.eval(feed_dict={self.eval_input: [state]})[0])
