@@ -3,6 +3,8 @@ import tensorflow as tf
 from tensorflow.python.framework import ops
 import numpy as np
 import functools
+import math
+from array import array
 
 
 def lazy_property(func):
@@ -56,7 +58,9 @@ def conv(inputs, kernel_shape, bias_shape, strides, w_i, b_i=None, activation=tf
     return activation(conv) if activation is not None else conv
 
 # 默认有bias，激活函数为relu
-def noisy_dense(inputs, units, bias_shape, c_names, w_i, b_i=None, activation=tf.nn.relu):
+def noisy_dense(inputs, units, bias_shape, c_names, w_i, b_i=None, activation=tf.nn.relu, noisy_distribution='factorised'):
+    def f(e_list):
+        return tf.sign(e_list) * tf.sqrt(tf.abs(e_list))
     # 使用tf.layers，注意：先flatten
     # dense1 = tf.layers.dense(tf.contrib.layers.flatten(relu5), activation=tf.nn.relu, units=50)
     if not isinstance(inputs, ops.Tensor):
@@ -69,13 +73,24 @@ def noisy_dense(inputs, units, bias_shape, c_names, w_i, b_i=None, activation=tf
     flatten_shape = inputs.shape[1]
     weights = tf.get_variable('weights', shape=[flatten_shape, units], initializer=w_i)
     w_noise = tf.get_variable('w_noise', [flatten_shape, units], initializer=w_i, collections=c_names)
-    weights += tf.multiply(tf.random_normal(shape=w_noise.shape), w_noise)
+    if noisy_distribution == 'independent':
+        weights += tf.multiply(tf.random_normal(shape=w_noise.shape), w_noise)
+    elif noisy_distribution == 'factorised':
+        noise_1 = f(tf.random_normal(tf.TensorShape([flatten_shape]), dtype=tf.float32))
+        noise_2 = f(tf.random_normal(tf.TensorShape([units]), dtype=tf.float32))
+        noise = np.zeros([flatten_shape, units], dtype='float32')
+        for i, j in zip(range(flatten_shape), range(units)):
+            noise[i][j] = tf.multiply(noise_1[i], noise_2[j]).eval()
+        weights += tf.multiply(noise, w_noise)
     dense = tf.matmul(inputs, weights)
     if bias_shape is not None:
         assert bias_shape[0] == units
         biases = tf.get_variable('biases', shape=bias_shape, initializer=b_i)
-        b_noise = tf.get_variable('b_noise_1', [1, units], initializer=b_i, collections=c_names)
-        biases += tf.multiply(tf.random_normal(shape=b_noise.shape), b_noise)
+        b_noise = tf.get_variable('b_noise', [1, units], initializer=b_i, collections=c_names)
+        if noisy_distribution == 'independent':
+            biases += tf.multiply(tf.random_normal(shape=b_noise.shape), b_noise)
+        elif noisy_distribution == 'factorised':
+            biases += noise_2
         return activation(dense + biases) if activation is not None else dense + biases
     return activation(dense) if activation is not None else dense
 
