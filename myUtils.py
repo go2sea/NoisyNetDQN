@@ -57,10 +57,11 @@ def conv(inputs, kernel_shape, bias_shape, strides, w_i, b_i=None, activation=tf
         return activation(conv + biases) if activation is not None else conv + biases
     return activation(conv) if activation is not None else conv
 
+
 # 默认有bias，激活函数为relu
 def noisy_dense(inputs, units, bias_shape, c_names, w_i, b_i=None, activation=tf.nn.relu, noisy_distribution='factorised'):
     def f(e_list):
-        return tf.sign(e_list) * tf.sqrt(tf.abs(e_list))
+        return tf.multiply(tf.sign(e_list), tf.pow(tf.abs(e_list), 0.5))
     # 使用tf.layers，注意：先flatten
     # dense1 = tf.layers.dense(tf.contrib.layers.flatten(relu5), activation=tf.nn.relu, units=50)
     if not isinstance(inputs, ops.Tensor):
@@ -76,12 +77,9 @@ def noisy_dense(inputs, units, bias_shape, c_names, w_i, b_i=None, activation=tf
     if noisy_distribution == 'independent':
         weights += tf.multiply(tf.random_normal(shape=w_noise.shape), w_noise)
     elif noisy_distribution == 'factorised':
-        noise_1 = f(tf.random_normal(tf.TensorShape([flatten_shape]), dtype=tf.float32))
-        noise_2 = f(tf.random_normal(tf.TensorShape([units]), dtype=tf.float32))
-        noise = np.zeros([flatten_shape, units], dtype='float32')
-        for i, j in zip(range(flatten_shape), range(units)):
-            noise[i][j] = tf.multiply(noise_1[i], noise_2[j]).eval()
-        weights += tf.multiply(noise, w_noise)
+        noise_1 = f(tf.random_normal(tf.TensorShape([flatten_shape, 1]), dtype=tf.float32))  # 注意是列向量形式，方便矩阵乘法
+        noise_2 = f(tf.random_normal(tf.TensorShape([1, units]), dtype=tf.float32))
+        weights += tf.multiply(noise_1 * noise_2, w_noise)
     dense = tf.matmul(inputs, weights)
     if bias_shape is not None:
         assert bias_shape[0] == units
@@ -90,9 +88,10 @@ def noisy_dense(inputs, units, bias_shape, c_names, w_i, b_i=None, activation=tf
         if noisy_distribution == 'independent':
             biases += tf.multiply(tf.random_normal(shape=b_noise.shape), b_noise)
         elif noisy_distribution == 'factorised':
-            biases += noise_2
+            biases += tf.multiply(noise_2, b_noise)
         return activation(dense + biases) if activation is not None else dense + biases
     return activation(dense) if activation is not None else dense
+
 
 
 # 默认有bias，激活函数为relu
