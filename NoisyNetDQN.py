@@ -3,21 +3,8 @@ import tensorflow as tf
 import numpy as np
 import random
 from collections import deque
-import functools
 
-from myUtils import conv, noisy_dense
-
-
-def lazy_property(func):
-    attribute = '_lazy_' + func.__name__
-
-    @property
-    @functools.wraps(func)
-    def wrapper(self):
-        if not hasattr(self, attribute):
-            setattr(self, attribute, func(self))
-        return getattr(self, attribute)
-    return wrapper
+from myUtils import lazy_property, conv, noisy_dense
 
 
 class NoisyNetDQN:
