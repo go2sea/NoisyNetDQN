@@ -3,8 +3,6 @@ import tensorflow as tf
 from tensorflow.python.framework import ops
 import numpy as np
 import functools
-import math
-from array import array
 
 
 def lazy_property(func):
@@ -91,7 +89,6 @@ def noisy_dense(inputs, units, bias_shape, c_names, w_i, b_i=None, activation=tf
             biases += tf.multiply(noise_2, b_noise)
         return activation(dense + biases) if activation is not None else dense + biases
     return activation(dense) if activation is not None else dense
-
 
 
 # 默认有bias，激活函数为relu
