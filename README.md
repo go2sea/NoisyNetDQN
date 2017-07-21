@@ -3,7 +3,7 @@
 
 ##### The Q-value function is implemented with 2 convolution layers and 3 fully connected layers, and I use the atari game Breakout-v0 for the test.
 
-##### If you are doing test on the CartPole or some other games which the state is 1 demotion, there network of Q-value function should only have dense layers.
+##### If you are doing test on the CartPole or some other games which the state is 1 dimension, there network of Q-value function should only have dense layers.
 
 ##### As a comparison, you can see the implementation of DQN in DQN.py.
 
