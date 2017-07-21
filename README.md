@@ -11,7 +11,7 @@
     state, real-reward, game_over, lives_rest
 
 ##### There are 4 actions in the game Breakout-v0:
-    0: hold and doing nothing
+    0: hold and do nothing
     1: throw the ball
     2: move right
     3: move left
