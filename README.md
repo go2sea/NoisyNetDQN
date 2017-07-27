@@ -1,5 +1,5 @@
 # NoisyNetDQN
-#### Tensorflow implementation for "Noisy network for exploration"
+#### A TensorFlow implementation of "Noisy network for exploration".
 
 ##### The Q-value function is implemented with 2 convolution layers and 3 fully connected layers, and I use the atari game Breakout-v0 for the test.
 
