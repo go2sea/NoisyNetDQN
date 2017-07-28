@@ -43,6 +43,7 @@ def BreakOut_NoisyNetDQN(index, env):
             train_reward = 1 if throw else -1 if lives < last_lives else real_reward
             score += real_reward
             throw = lives < last_lives
+            last_lives = lives
             agent.perceive(state, action, train_reward, next_state, done)  # miss: -1  break: reward   nothing: 0
             agent.train_Q_network(update=False)
             state = next_state
