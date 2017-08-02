@@ -34,6 +34,7 @@ def BreakOut_NoisyNetDQN(index, env):
         # while done is False:
         last_lives = 5
         throw = True
+        items_buffer = []
         while not done:
             env.render()
             action = 1 if throw else agent.noisy_action(state)
@@ -44,9 +45,15 @@ def BreakOut_NoisyNetDQN(index, env):
             score += real_reward
             throw = lives < last_lives
             last_lives = lives
-            agent.perceive(state, action, train_reward, next_state, done)  # miss: -1  break: reward   nothing: 0
-            agent.train_Q_network(update=False)
+            # agent.perceive(state, action, train_reward, next_state, done)  # miss: -1  break: reward   nothing: 0
+            items_buffer.append([state, action, next_state, done])  # miss: -1  break: reward   nothing: 0
             state = next_state
+            if train_reward != 0:  # train when miss or scores
+                print 'len(items_buffer):', len(items_buffer)
+                for item in items_buffer:
+                    agent.perceive(item[0], item[1], -1 if throw else train_reward, item[2], item[3])
+                    agent.train_Q_network(update=False)
+                items_buffer = []
         scores.append(score)
         agent.sess.run(agent.update_target_net)
         print "episode:", e, "  score:", score, "  memory length:", len(agent.replay_buffer)
