@@ -48,7 +48,7 @@ def BreakOut_NoisyNetDQN(index, env):
             # agent.perceive(state, action, train_reward, next_state, done)  # miss: -1  break: reward   nothing: 0
             items_buffer.append([state, action, next_state, done])  # miss: -1  break: reward   nothing: 0
             state = next_state
-            if train_reward != 0:  # train when miss or scores
+            if train_reward != 0:  # train when miss the ball or score or throw the ball in the beginning
                 print 'len(items_buffer):', len(items_buffer)
                 for item in items_buffer:
                     agent.perceive(item[0], item[1], -1 if throw else train_reward, item[2], item[3])
